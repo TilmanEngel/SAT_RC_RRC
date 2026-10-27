@@ -6,10 +6,11 @@ from itertools import combinations
 import csv
 #parameter to choose, what type of nonnegative matrix to compute
 matrix = 'ngon'
-rrc = True
+#using rrc or rc otherwise
+rrc = False
 if matrix == 'corr':
     m = 5
-    t = 24
+    t = 25
 
     n = 2 ** m
 
@@ -21,9 +22,9 @@ if matrix == 'corr':
 
 elif matrix == 'ngon':
     #Number of vertices
-    n = 19
+    n = 20
     #xc to check
-    t = 8
+    t = 7
     # initialize Slack matrix (fp)
     A = [[0 for _ in range(n)] for _ in range(n)]
     for i in range(n):
@@ -53,8 +54,8 @@ elif matrix == 'ngon':
                 Aint[i][(i+l)%n] = l
                 Aint[i][(i-1-l)%n] = l
 elif matrix == 'ledm':
-    n = 18
-    t = 7
+    n = 9
+    t = 5
     A = [[(i-j)*(i-j) for j in range(n)] for i in range(n)]
 
 B = [[1 if A[i][j] > 0 else 0 for j in range(n)] for i in range(n)]
@@ -101,20 +102,24 @@ def equiv_and_not(cnf, x, a, b):
 # Equivalent:
 # v[j,k] <-> AND_i( not u[i,k] \/ B[i,j] )
 # ============================================================
+#going through all columns and all rectangles
 for j in range(n):
     for k in range(t):
+        # every row has to either have a positive entry or cannot be covered, meaning not u
         lits = []
         for i in range(n):
+            # going through 1 column (incrementing row index)
             if B[i][j] == 1:
                 # (not u OR 1) = true
                 continue
             else:
                 # (not u OR 0) = not u
                 lits.append(-U(i,k))
-        # If all clauses are trivially true
+        # If there is no zero in this column, we can add it
         if len(lits) == 0:
             # force v[j,k] = true
             cnf.append([V(j,k)])
+        # otherwise, the gathered u have to be inactive for the column to be added
         else:
             # v -> all literals
             for lit in lits:
@@ -185,8 +190,10 @@ for i in range(n):
 # ============================================================
 for i, i1 in combinations(range(n), 2):
     for j, j1 in combinations(range(n), 2):
-        # filtering condition from MiniZinc
-        if B[i][j1] == 0 or B[i1][j] == 0:
+        # we are only testing for bottom left and top right zeros
+        # This was a mistake at first, when switching to combinations
+        # while testing, whis was the fastest version compared to no fooling sets and all
+        if (B[i][j] != 0 and B[i1][j1] != 0) and (B[i][j1] == 0 or B[i1][j] == 0):
             for k in range(t):
                 cnf.append([-X(i, j, k),-X(i1, j1, k)])
 # ============================================================
@@ -213,26 +220,26 @@ if rrc:
         #for rational entries, we can check the condition directly
         for i, i1 in combinations(range(n), 2):
             for j, j1 in combinations(range(n), 2):
-                        if (B[i][j] == 0 or B[i1][j1] == 0 or B[i1][j] == 0 or B[i][j1] == 0):
-                            continue
-                        if A[i][j] * A[i1][j1] - A[i][j1] * A[i1][j] > 0:
-                            for k_remove in range(t):
-                                clause = []
-                                for k in range(t):
-                                    if k == k_remove:
-                                        continue
-                                    clause.append(X(i, j, k))
-                                    clause.append(X(i1, j1, k))
-                                cnf.append(clause)
-                        elif A[i][j] * A[i1][j1] - A[i][j1] * A[i1][j] < 0:
-                            for k_remove in range(t):
-                                clause = []
-                                for k in range(t):
-                                    if k == k_remove:
-                                        continue
-                                    clause.append(X(i, j1, k))
-                                    clause.append(X(i1, j, k))
-                                cnf.append(clause)
+                if (B[i][j] == 0 or B[i1][j1] == 0 or B[i1][j] == 0 or B[i][j1] == 0):
+                    continue
+                if A[i][j] * A[i1][j1] - A[i][j1] * A[i1][j] > 0:
+                    for k_remove in range(t):
+                        clause = []
+                        for k in range(t):
+                            if k == k_remove:
+                                continue
+                            clause.append(X(i, j, k))
+                            clause.append(X(i1, j1, k))
+                        cnf.append(clause)
+                elif A[i][j] * A[i1][j1] - A[i][j1] * A[i1][j] < 0:
+                    for k_remove in range(t):
+                        clause = []
+                        for k in range(t):
+                            if k == k_remove:
+                                continue
+                            clause.append(X(i, j1, k))
+                            clause.append(X(i1, j, k))
+                        cnf.append(clause)
 # ============================================================
 # CONSTRAINT 7: definition of lexicographic variables
 #
@@ -272,7 +279,7 @@ else:
     r = ''
 cnf.to_file(f"CNF/{r}rectangle_cover_{matrix}_n{n}r{t}.cnf")
 
-print(f"DIMACS written to CNF/refined_rectangle_cover_{matrix}_n{n}r{t}.cnf")
+print(f"DIMACS written to CNF/{r}refined_rectangle_cover_{matrix}_n{n}r{t}.cnf")
 
 # ============================================================
 # SOLVE WITH CADICAL
